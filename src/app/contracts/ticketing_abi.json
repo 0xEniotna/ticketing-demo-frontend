@@ -1,0 +1,647 @@
+[
+    {
+        "type": "impl",
+        "name": "TicketingContractImpl",
+        "interface_name": "ticketing_contracts::ticketing::ticketing::ITicketingContract"
+    },
+    {
+        "type": "struct",
+        "name": "core::byte_array::ByteArray",
+        "members": [
+            {
+                "name": "data",
+                "type": "core::array::Array::<core::bytes_31::bytes31>"
+            },
+            {
+                "name": "pending_word",
+                "type": "core::felt252"
+            },
+            {
+                "name": "pending_word_len",
+                "type": "core::integer::u32"
+            }
+        ]
+    },
+    {
+        "type": "enum",
+        "name": "ticketing_contracts::ticketing::types::TicketCategoryType",
+        "variants": [
+            {
+                "name": "EarlyBird",
+                "type": "()"
+            },
+            {
+                "name": "GeneralEntry",
+                "type": "()"
+            },
+            {
+                "name": "Late",
+                "type": "()"
+            },
+            {
+                "name": "VIP",
+                "type": "()"
+            }
+        ]
+    },
+    {
+        "type": "struct",
+        "name": "core::integer::u256",
+        "members": [
+            {
+                "name": "low",
+                "type": "core::integer::u128"
+            },
+            {
+                "name": "high",
+                "type": "core::integer::u128"
+            }
+        ]
+    },
+    {
+        "type": "enum",
+        "name": "core::bool",
+        "variants": [
+            {
+                "name": "False",
+                "type": "()"
+            },
+            {
+                "name": "True",
+                "type": "()"
+            }
+        ]
+    },
+    {
+        "type": "struct",
+        "name": "ticketing_contracts::ticketing::types::EventInfo",
+        "members": [
+            {
+                "name": "id",
+                "type": "core::integer::u64"
+            },
+            {
+                "name": "creator",
+                "type": "core::starknet::contract_address::ContractAddress"
+            },
+            {
+                "name": "start_timestamp",
+                "type": "core::integer::u64"
+            },
+            {
+                "name": "is_active",
+                "type": "core::bool"
+            }
+        ]
+    },
+    {
+        "type": "struct",
+        "name": "ticketing_contracts::ticketing::types::TicketCategory",
+        "members": [
+            {
+                "name": "event_id",
+                "type": "core::integer::u64"
+            },
+            {
+                "name": "category_type",
+                "type": "ticketing_contracts::ticketing::types::TicketCategoryType"
+            },
+            {
+                "name": "price",
+                "type": "core::integer::u256"
+            },
+            {
+                "name": "total_supply",
+                "type": "core::integer::u64"
+            },
+            {
+                "name": "remaining",
+                "type": "core::integer::u64"
+            }
+        ]
+    },
+    {
+        "type": "struct",
+        "name": "ticketing_contracts::ticketing::types::Ticket",
+        "members": [
+            {
+                "name": "id",
+                "type": "core::integer::u64"
+            },
+            {
+                "name": "event_id",
+                "type": "core::integer::u64"
+            },
+            {
+                "name": "category_type",
+                "type": "ticketing_contracts::ticketing::types::TicketCategoryType"
+            },
+            {
+                "name": "owner",
+                "type": "core::starknet::contract_address::ContractAddress"
+            },
+            {
+                "name": "is_used",
+                "type": "core::bool"
+            }
+        ]
+    },
+    {
+        "type": "interface",
+        "name": "ticketing_contracts::ticketing::ticketing::ITicketingContract",
+        "items": [
+            {
+                "type": "function",
+                "name": "create_event",
+                "inputs": [
+                    {
+                        "name": "name",
+                        "type": "core::byte_array::ByteArray"
+                    },
+                    {
+                        "name": "start_timestamp",
+                        "type": "core::integer::u64"
+                    }
+                ],
+                "outputs": [
+                    {
+                        "type": "core::integer::u64"
+                    }
+                ],
+                "state_mutability": "external"
+            },
+            {
+                "type": "function",
+                "name": "configure_ticket_categories",
+                "inputs": [
+                    {
+                        "name": "event_id",
+                        "type": "core::integer::u64"
+                    },
+                    {
+                        "name": "category_type",
+                        "type": "ticketing_contracts::ticketing::types::TicketCategoryType"
+                    },
+                    {
+                        "name": "price",
+                        "type": "core::integer::u256"
+                    },
+                    {
+                        "name": "supply",
+                        "type": "core::integer::u64"
+                    }
+                ],
+                "outputs": [],
+                "state_mutability": "external"
+            },
+            {
+                "type": "function",
+                "name": "cancel_event",
+                "inputs": [
+                    {
+                        "name": "event_id",
+                        "type": "core::integer::u64"
+                    }
+                ],
+                "outputs": [],
+                "state_mutability": "external"
+            },
+            {
+                "type": "function",
+                "name": "buy_ticket",
+                "inputs": [
+                    {
+                        "name": "event_id",
+                        "type": "core::integer::u64"
+                    },
+                    {
+                        "name": "category_type",
+                        "type": "ticketing_contracts::ticketing::types::TicketCategoryType"
+                    }
+                ],
+                "outputs": [
+                    {
+                        "type": "core::integer::u64"
+                    }
+                ],
+                "state_mutability": "external"
+            },
+            {
+                "type": "function",
+                "name": "use_ticket",
+                "inputs": [
+                    {
+                        "name": "ticket_id",
+                        "type": "core::integer::u64"
+                    }
+                ],
+                "outputs": [
+                    {
+                        "type": "core::bool"
+                    }
+                ],
+                "state_mutability": "external"
+            },
+            {
+                "type": "function",
+                "name": "list_secondary",
+                "inputs": [
+                    {
+                        "name": "ticket_id",
+                        "type": "core::integer::u64"
+                    },
+                    {
+                        "name": "price",
+                        "type": "core::integer::u256"
+                    }
+                ],
+                "outputs": [],
+                "state_mutability": "external"
+            },
+            {
+                "type": "function",
+                "name": "cancel_secondary",
+                "inputs": [
+                    {
+                        "name": "ticket_id",
+                        "type": "core::integer::u64"
+                    }
+                ],
+                "outputs": [],
+                "state_mutability": "external"
+            },
+            {
+                "type": "function",
+                "name": "buy_secondary",
+                "inputs": [
+                    {
+                        "name": "ticket_id",
+                        "type": "core::integer::u64"
+                    }
+                ],
+                "outputs": [
+                    {
+                        "type": "core::bool"
+                    }
+                ],
+                "state_mutability": "external"
+            },
+            {
+                "type": "function",
+                "name": "get_event",
+                "inputs": [
+                    {
+                        "name": "event_id",
+                        "type": "core::integer::u64"
+                    }
+                ],
+                "outputs": [
+                    {
+                        "type": "ticketing_contracts::ticketing::types::EventInfo"
+                    }
+                ],
+                "state_mutability": "view"
+            },
+            {
+                "type": "function",
+                "name": "get_event_name",
+                "inputs": [
+                    {
+                        "name": "event_id",
+                        "type": "core::integer::u64"
+                    }
+                ],
+                "outputs": [
+                    {
+                        "type": "core::byte_array::ByteArray"
+                    }
+                ],
+                "state_mutability": "view"
+            },
+            {
+                "type": "function",
+                "name": "get_ticket_category",
+                "inputs": [
+                    {
+                        "name": "event_id",
+                        "type": "core::integer::u64"
+                    },
+                    {
+                        "name": "category_type",
+                        "type": "ticketing_contracts::ticketing::types::TicketCategoryType"
+                    }
+                ],
+                "outputs": [
+                    {
+                        "type": "ticketing_contracts::ticketing::types::TicketCategory"
+                    }
+                ],
+                "state_mutability": "view"
+            },
+            {
+                "type": "function",
+                "name": "get_ticket",
+                "inputs": [
+                    {
+                        "name": "ticket_id",
+                        "type": "core::integer::u64"
+                    }
+                ],
+                "outputs": [
+                    {
+                        "type": "ticketing_contracts::ticketing::types::Ticket"
+                    }
+                ],
+                "state_mutability": "view"
+            },
+            {
+                "type": "function",
+                "name": "get_events_count",
+                "inputs": [],
+                "outputs": [
+                    {
+                        "type": "core::integer::u64"
+                    }
+                ],
+                "state_mutability": "view"
+            },
+            {
+                "type": "function",
+                "name": "get_tickets_count",
+                "inputs": [],
+                "outputs": [
+                    {
+                        "type": "core::integer::u64"
+                    }
+                ],
+                "state_mutability": "view"
+            },
+            {
+                "type": "function",
+                "name": "get_user_tickets",
+                "inputs": [
+                    {
+                        "name": "user",
+                        "type": "core::starknet::contract_address::ContractAddress"
+                    }
+                ],
+                "outputs": [
+                    {
+                        "type": "core::array::Array::<core::integer::u64>"
+                    }
+                ],
+                "state_mutability": "view"
+            },
+            {
+                "type": "function",
+                "name": "is_ticket_for_sale",
+                "inputs": [
+                    {
+                        "name": "ticket_id",
+                        "type": "core::integer::u64"
+                    }
+                ],
+                "outputs": [
+                    {
+                        "type": "core::bool"
+                    }
+                ],
+                "state_mutability": "view"
+            },
+            {
+                "type": "function",
+                "name": "get_ticket_sale_price",
+                "inputs": [
+                    {
+                        "name": "ticket_id",
+                        "type": "core::integer::u64"
+                    }
+                ],
+                "outputs": [
+                    {
+                        "type": "core::integer::u256"
+                    }
+                ],
+                "state_mutability": "view"
+            }
+        ]
+    },
+    {
+        "type": "constructor",
+        "name": "constructor",
+        "inputs": []
+    },
+    {
+        "type": "event",
+        "name": "ticketing_contracts::ticketing::ticketing::TicketingContract::EventCreated",
+        "kind": "struct",
+        "members": [
+            {
+                "name": "event_id",
+                "type": "core::integer::u64",
+                "kind": "data"
+            },
+            {
+                "name": "creator",
+                "type": "core::starknet::contract_address::ContractAddress",
+                "kind": "data"
+            },
+            {
+                "name": "name",
+                "type": "core::byte_array::ByteArray",
+                "kind": "data"
+            }
+        ]
+    },
+    {
+        "type": "event",
+        "name": "ticketing_contracts::ticketing::ticketing::TicketingContract::TicketCategoryAdded",
+        "kind": "struct",
+        "members": [
+            {
+                "name": "event_id",
+                "type": "core::integer::u64",
+                "kind": "data"
+            },
+            {
+                "name": "category_type",
+                "type": "ticketing_contracts::ticketing::types::TicketCategoryType",
+                "kind": "data"
+            },
+            {
+                "name": "price",
+                "type": "core::integer::u256",
+                "kind": "data"
+            },
+            {
+                "name": "supply",
+                "type": "core::integer::u64",
+                "kind": "data"
+            }
+        ]
+    },
+    {
+        "type": "event",
+        "name": "ticketing_contracts::ticketing::ticketing::TicketingContract::EventCancelled",
+        "kind": "struct",
+        "members": [
+            {
+                "name": "event_id",
+                "type": "core::integer::u64",
+                "kind": "data"
+            }
+        ]
+    },
+    {
+        "type": "event",
+        "name": "ticketing_contracts::ticketing::ticketing::TicketingContract::TicketPurchased",
+        "kind": "struct",
+        "members": [
+            {
+                "name": "ticket_id",
+                "type": "core::integer::u64",
+                "kind": "data"
+            },
+            {
+                "name": "event_id",
+                "type": "core::integer::u64",
+                "kind": "data"
+            },
+            {
+                "name": "category_type",
+                "type": "ticketing_contracts::ticketing::types::TicketCategoryType",
+                "kind": "data"
+            },
+            {
+                "name": "buyer",
+                "type": "core::starknet::contract_address::ContractAddress",
+                "kind": "data"
+            }
+        ]
+    },
+    {
+        "type": "event",
+        "name": "ticketing_contracts::ticketing::ticketing::TicketingContract::TicketUsed",
+        "kind": "struct",
+        "members": [
+            {
+                "name": "ticket_id",
+                "type": "core::integer::u64",
+                "kind": "data"
+            },
+            {
+                "name": "event_id",
+                "type": "core::integer::u64",
+                "kind": "data"
+            },
+            {
+                "name": "user",
+                "type": "core::starknet::contract_address::ContractAddress",
+                "kind": "data"
+            }
+        ]
+    },
+    {
+        "type": "event",
+        "name": "ticketing_contracts::ticketing::ticketing::TicketingContract::TicketListed",
+        "kind": "struct",
+        "members": [
+            {
+                "name": "ticket_id",
+                "type": "core::integer::u64",
+                "kind": "data"
+            },
+            {
+                "name": "price",
+                "type": "core::integer::u256",
+                "kind": "data"
+            }
+        ]
+    },
+    {
+        "type": "event",
+        "name": "ticketing_contracts::ticketing::ticketing::TicketingContract::TicketSaleCancelled",
+        "kind": "struct",
+        "members": [
+            {
+                "name": "ticket_id",
+                "type": "core::integer::u64",
+                "kind": "data"
+            }
+        ]
+    },
+    {
+        "type": "event",
+        "name": "ticketing_contracts::ticketing::ticketing::TicketingContract::TicketResold",
+        "kind": "struct",
+        "members": [
+            {
+                "name": "ticket_id",
+                "type": "core::integer::u64",
+                "kind": "data"
+            },
+            {
+                "name": "from",
+                "type": "core::starknet::contract_address::ContractAddress",
+                "kind": "data"
+            },
+            {
+                "name": "to",
+                "type": "core::starknet::contract_address::ContractAddress",
+                "kind": "data"
+            },
+            {
+                "name": "price",
+                "type": "core::integer::u256",
+                "kind": "data"
+            }
+        ]
+    },
+    {
+        "type": "event",
+        "name": "ticketing_contracts::ticketing::ticketing::TicketingContract::Event",
+        "kind": "enum",
+        "variants": [
+            {
+                "name": "EventCreated",
+                "type": "ticketing_contracts::ticketing::ticketing::TicketingContract::EventCreated",
+                "kind": "nested"
+            },
+            {
+                "name": "TicketCategoryAdded",
+                "type": "ticketing_contracts::ticketing::ticketing::TicketingContract::TicketCategoryAdded",
+                "kind": "nested"
+            },
+            {
+                "name": "EventCancelled",
+                "type": "ticketing_contracts::ticketing::ticketing::TicketingContract::EventCancelled",
+                "kind": "nested"
+            },
+            {
+                "name": "TicketPurchased",
+                "type": "ticketing_contracts::ticketing::ticketing::TicketingContract::TicketPurchased",
+                "kind": "nested"
+            },
+            {
+                "name": "TicketUsed",
+                "type": "ticketing_contracts::ticketing::ticketing::TicketingContract::TicketUsed",
+                "kind": "nested"
+            },
+            {
+                "name": "TicketListed",
+                "type": "ticketing_contracts::ticketing::ticketing::TicketingContract::TicketListed",
+                "kind": "nested"
+            },
+            {
+                "name": "TicketSaleCancelled",
+                "type": "ticketing_contracts::ticketing::ticketing::TicketingContract::TicketSaleCancelled",
+                "kind": "nested"
+            },
+            {
+                "name": "TicketResold",
+                "type": "ticketing_contracts::ticketing::ticketing::TicketingContract::TicketResold",
+                "kind": "nested"
+            }
+        ]
+    }
+]
