@@ -556,18 +556,52 @@ export default function MyTicketsPage() {
               {tickets.map((ticket) => {
                 const eventId = ticket.event_id.toString();
 
-                // const categoryType = TicketCategoryType[ticket.category_type];
-                const categoryType = ticket.category_type;
+                // Get the category name from the enum
+                let categoryType;
+                let categoryTypeNumber: number;
 
-                const event = mockEventDetails[eventId] || {
-                  name: `Event #${eventId}`,
-                  date: 'TBD',
-                  venue: 'TBD',
-                  categories: {},
-                };
+                console.log('ticket.category_type', ticket.category_type);
 
-                // Get category name from the event's categories or use the type name directly
-                const categoryName = TicketCategoryType[categoryType];
+                if (typeof ticket.category_type === 'number') {
+                  // Already a number, use directly
+                  categoryType = TicketCategoryType[ticket.category_type];
+                  categoryTypeNumber = ticket.category_type;
+                } else if (
+                  ticket.category_type &&
+                  typeof ticket.category_type === 'object' &&
+                  'activeVariant' in ticket.category_type
+                ) {
+                  // Get the variant name (e.g., "EarlyBird")
+                  const variantName = (
+                    ticket.category_type as any
+                  ).activeVariant();
+                  categoryType = variantName;
+
+                  // Convert variant name to enum numeric value
+                  categoryTypeNumber =
+                    TicketCategoryType[
+                      variantName as keyof typeof TicketCategoryType
+                    ];
+                } else if (typeof ticket.category_type === 'string') {
+                  // If it's a string (like "EarlyBird")
+                  categoryType = ticket.category_type;
+                  categoryTypeNumber =
+                    TicketCategoryType[
+                      ticket.category_type as keyof typeof TicketCategoryType
+                    ];
+                } else {
+                  // Fallback
+                  categoryType = 'GeneralEntry';
+                  categoryTypeNumber = TicketCategoryType.GeneralEntry;
+                }
+
+                // Now use categoryTypeNumber to get the category name from event.categories
+                const categoryName =
+                  mockEventDetails[eventId]?.categories[
+                    categoryTypeNumber.toString()
+                  ] ||
+                  categoryType?.replace(/([A-Z])/g, ' $1').trim() ||
+                  'Regular Ticket';
 
                 // Generate a QR code-like pattern that's unique per ticket
                 const ticketIdNum = Number(ticket.id) % 1000;
@@ -619,7 +653,8 @@ export default function MyTicketsPage() {
                     <div className="card-body p-6">
                       <div className="flex justify-between items-start">
                         <h2 className="card-title text-xl font-semibold text-gray-800">
-                          {event.name}
+                          {mockEventDetails[eventId]?.name ||
+                            `Event #${eventId}`}
                         </h2>
                         <div className="badge badge-primary badge-lg">
                           {categoryName}
@@ -642,7 +677,7 @@ export default function MyTicketsPage() {
                               d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
                             />
                           </svg>
-                          {event.date}
+                          {mockEventDetails[eventId]?.date || 'TBD'}
                         </p>
                         <p className="flex items-center gap-2">
                           <svg
@@ -665,7 +700,7 @@ export default function MyTicketsPage() {
                               d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"
                             />
                           </svg>
-                          {event.venue}
+                          {mockEventDetails[eventId]?.venue || 'TBD'}
                         </p>
                         <p className="flex items-center gap-2">
                           <svg
@@ -703,7 +738,9 @@ export default function MyTicketsPage() {
                             className="btn btn-primary btn-sm rounded-full px-4 flex items-center gap-2 transition-transform hover:scale-105"
                             onClick={() => handleUseTicket(ticket.id)}
                             disabled={isLoading}
-                            aria-label={`Use ticket for ${event.name}`}
+                            aria-label={`Use ticket for ${
+                              mockEventDetails[eventId]?.name || 'Event'
+                            }`}
                           >
                             <svg
                               xmlns="http://www.w3.org/2000/svg"
@@ -727,7 +764,9 @@ export default function MyTicketsPage() {
                               handleListForSale(ticket.id, BigInt(20e18))
                             }
                             disabled={isLoading}
-                            aria-label={`Sell ticket for ${event.name}`}
+                            aria-label={`Sell ticket for ${
+                              mockEventDetails[eventId]?.name || 'Event'
+                            }`}
                           >
                             <svg
                               xmlns="http://www.w3.org/2000/svg"

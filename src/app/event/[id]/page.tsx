@@ -13,7 +13,7 @@ import {
 import Link from 'next/link';
 import { mockEvents } from '../../data/events';
 import { ethers } from 'ethers';
-import { Call } from 'starknet';
+import { CairoCustomEnum, Call } from 'starknet';
 
 // Interface for ticket category edit form
 interface TicketCategoryForm {
@@ -111,11 +111,12 @@ export default function EventPage() {
             }
           })
         );
+        console.log('fetchedCategories', fetchedCategories);
 
         const validCategories = fetchedCategories.filter(
           Boolean
         ) as TicketCategory[];
-
+        console.log('validCategories', validCategories);
         if (isMounted) {
           setCategories(validCategories);
 
@@ -228,7 +229,7 @@ export default function EventPage() {
 
         console.log(`Configuring category ${categoryType}:`, {
           eventId: eventId.toString(),
-          type: categoryType, // Use the numeric type for logging
+          type: categoryType,
           price: priceInWei.toString(),
           supply: supplyBigInt.toString(),
         });
@@ -802,38 +803,41 @@ export default function EventPage() {
                       </form>
                     ) : (
                       <div className="space-y-4">
-                        {categories.map((category) => {
-                          const categoryName = [
-                            'Early Bird',
-                            'General Entry',
-                            'Late',
-                            'VIP',
-                          ][category.category_type];
-                          return (
-                            <div
-                              key={`${eventId.toString()}-${
-                                category.category_type
-                              }`}
-                              className="flex justify-between items-center p-4 bg-teal-50/50 rounded-lg hover:bg-teal-100 transition-all"
-                            >
-                              <div>
-                                <h3 className="font-medium text-gray-800">
-                                  {categoryName}
-                                </h3>
-                                <p className="text-sm text-gray-600">
-                                  {category.remaining.toString()} of{' '}
-                                  {category.total_supply.toString()} left
-                                </p>
+                        {categories
+                          .filter(
+                            (category) => category.total_supply > BigInt(0)
+                          )
+                          .map((category) => {
+                            const categoryType = (
+                              category.category_type as unknown as CairoCustomEnum
+                            ).activeVariant();
+
+                            const categoryName = categoryType;
+                            return (
+                              <div
+                                key={`${eventId.toString()}-${
+                                  category.category_type
+                                }`}
+                                className="flex justify-between items-center p-4 bg-teal-50/50 rounded-lg hover:bg-teal-100 transition-all"
+                              >
+                                <div>
+                                  <h3 className="font-medium text-gray-800">
+                                    {categoryName}
+                                  </h3>
+                                  <p className="text-sm text-gray-600">
+                                    {category.remaining.toString()} of{' '}
+                                    {category.total_supply.toString()} left
+                                  </p>
+                                </div>
+                                <span className="text-teal-600 font-semibold">
+                                  {Number(
+                                    ethers.formatEther(category.price)
+                                  ).toFixed(2)}{' '}
+                                  USD
+                                </span>
                               </div>
-                              <span className="text-teal-600 font-semibold">
-                                {Number(
-                                  ethers.formatEther(category.price)
-                                ).toFixed(2)}{' '}
-                                USD
-                              </span>
-                            </div>
-                          );
-                        })}
+                            );
+                          })}
                       </div>
                     )}
                   </>
