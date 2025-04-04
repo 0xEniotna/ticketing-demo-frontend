@@ -55,19 +55,16 @@ export function useWallet({
 
     const checkConnection = async () => {
       try {
-        console.log('Checking for existing wallet connection');
         const res = await argentWebWallet?.connect();
         if (!res || !isActive) return;
 
         const { account, approvalTransactionHash } = res;
 
         if (account.getSessionStatus() !== 'VALID') {
-          console.log('Session is not valid');
           return;
         }
 
         if (approvalTransactionHash && provider) {
-          console.log('Waiting for approval transaction');
           await provider?.waitForTransaction(approvalTransactionHash);
         }
 

@@ -22,6 +22,9 @@ export const paymasterParams = !process.env.NEXT_PUBLIC_AVNU_PAYMASTER_API_KEY
   ? undefined
   : {
       apiKey: process.env.NEXT_PUBLIC_AVNU_PAYMASTER_API_KEY,
+      headers: {
+        'Content-Type': 'application/json',
+      },
     };
 
 // Token addresses

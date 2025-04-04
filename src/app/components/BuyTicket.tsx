@@ -59,17 +59,7 @@ export default function BuyTicket({ eventId, onSuccess }: BuyTicketProps) {
       }
     } catch (err) {
       console.error('Error purchasing ticket:', err);
-      const ticketPrice = await ticketingContract.getTicketPrice(
-        eventId,
-        selectedCategory
-      );
-      await requestApprovals([
-        {
-          tokenAddress: STRK_ADDRESS,
-          amount: ticketPrice.toString(),
-          spender: address as `0x${string}`,
-        },
-      ]);
+
       setError(
         'Failed to purchase ticket. Authorize tokens spending and try again.'
       );

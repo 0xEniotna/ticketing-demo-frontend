@@ -138,7 +138,6 @@ export default function MyTicketsPage() {
       setError(null);
       try {
         const ids = await ticketingContract.getUserTickets(address);
-        console.log('ids', ids);
         if (isMounted) setTicketIds(ids);
       } catch (err) {
         console.error('Error loading ticket IDs:', err);
@@ -191,7 +190,6 @@ export default function MyTicketsPage() {
         for (const id of ticketIds) {
           try {
             const ticket = await ticketingContract.getTicket(id);
-            console.log('ticket', ticket);
             loadedTickets.push(ticket);
           } catch (ticketError) {
             console.error(`Error loading ticket ${id}:`, ticketError);

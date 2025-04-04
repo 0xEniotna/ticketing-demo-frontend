@@ -111,12 +111,10 @@ export default function EventPage() {
             }
           })
         );
-        console.log('fetchedCategories', fetchedCategories);
 
         const validCategories = fetchedCategories.filter(
           Boolean
         ) as TicketCategory[];
-        console.log('validCategories', validCategories);
         if (isMounted) {
           setCategories(validCategories);
 
@@ -227,13 +225,6 @@ export default function EventPage() {
         const priceInWei = BigInt(price * 1e18);
         const supplyBigInt = BigInt(supply);
 
-        console.log(`Configuring category ${categoryType}:`, {
-          eventId: eventId.toString(),
-          type: categoryType,
-          price: priceInWei.toString(),
-          supply: supplyBigInt.toString(),
-        });
-
         // Use the numeric enum value
         const call = ticketingContract.populateConfigureTicketCategories(
           eventId,
@@ -244,13 +235,11 @@ export default function EventPage() {
 
         calls.push(call);
       }
-      console.log('calls', calls);
 
       if (calls.length === 0) {
         throw new Error('No valid categories to update');
       }
 
-      console.log(`Executing ${calls.length} ticket category update calls`);
       const tx = await ticketingContract.executeCalls(calls);
       await account.waitForTransaction(tx);
       setUpdateSuccess(true);

@@ -156,9 +156,9 @@ export class TicketingContract {
 
       await this.execute('create_event', calldata);
 
-      // In a real implementation, you would parse the transaction receipt
-      // to get the event ID. For now, we'll return a placeholder.
-      return BigInt(1);
+      const eventId = await this.getEventsCount();
+
+      return eventId;
     } catch (error) {
       console.error('Error creating event:', error);
       throw error;

@@ -46,17 +46,12 @@ export async function cachedContractCall<T>(
   const now = Date.now();
 
   if (!forceFresh && cachedResult && now - cachedResult.timestamp < cacheTime) {
-    console.log(`Using cached result for ${cacheKey}`);
     return cachedResult.value;
   }
 
   // Check if we need to throttle this call
   const lastCallTime = lastCallTimestamps[cacheKey] || 0;
   if (!forceFresh && now - lastCallTime < throttleTime) {
-    console.log(
-      `Throttling call to ${cacheKey}, using cached data if available`
-    );
-
     // If we have any cached result, return it even if expired
     if (cachedResult) {
       return cachedResult.value;

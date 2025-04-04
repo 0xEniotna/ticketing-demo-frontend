@@ -17,25 +17,19 @@ async function mapContractEventToUIEvent(
   let imageNum = (Number(id) % 5) + 1;
   if (isNaN(imageNum) || imageNum < 1 || imageNum > 5) imageNum = 1;
 
-  // Get the event name from the contract
   let eventName = `Event #${id}`;
 
-  // First check if the event already has a name from getEvents
   if (event.name && event.name !== 'Unnamed Event') {
-    console.log(`Using existing name from event object: "${event.name}"`);
     eventName = event.name;
   } else {
     // If not, try to fetch it
     try {
       if (ticketingContract) {
-        console.log(`Fetching name for event ${id}...`);
         const name = await ticketingContract.getEventName(BigInt(id));
-        console.log(`Retrieved name for event ${id}: "${name}"`);
 
         // If the name is empty or 'Unnamed Event', fall back to the generic name
         if (name && name !== 'Unnamed Event') {
           eventName = name;
-          console.log(`Using retrieved name: ${eventName}`);
         } else {
           console.log(`Using fallback name: Event #${id}`);
         }
@@ -172,8 +166,6 @@ export default function Home() {
 
   const displayFeaturedEvents = featuredMockEvents;
 
-  console.log('contractEvents', contractEvents);
-  console.log('events', events);
   return (
     <div className="min-h-screen bg-gray-50 font-sans">
       {/* Hero Section */}

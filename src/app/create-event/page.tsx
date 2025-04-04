@@ -23,7 +23,7 @@ export default function CreateEventPage() {
   const [eventName, setEventName] = useState('');
   const [eventDate, setEventDate] = useState('');
   const [categories, setCategories] = useState<TicketCategoryForm[]>([
-    { type: TicketCategoryType.GeneralEntry, price: '10', supply: '100' },
+    { type: TicketCategoryType.GeneralEntry, price: '1', supply: '100' },
   ]);
 
   // UI state
@@ -35,7 +35,7 @@ export default function CreateEventPage() {
   const handleAddCategory = () => {
     setCategories([
       ...categories,
-      { type: TicketCategoryType.GeneralEntry, price: '10', supply: '100' },
+      { type: TicketCategoryType.GeneralEntry, price: '1', supply: '100' },
     ]);
   };
 
@@ -79,7 +79,6 @@ export default function CreateEventPage() {
         eventName,
         BigInt(eventTimestamp)
       );
-      // const newEventId = BigInt(1);
       setEventId(newEventId);
       setStep(2);
     } catch (err) {
@@ -112,7 +111,6 @@ export default function CreateEventPage() {
       for (const category of categories) {
         const priceInWei = BigInt(parseFloat(category.price) * 1e18);
         const supply = BigInt(parseInt(category.supply));
-
         calls.push(
           ticketingContract.populateConfigureTicketCategories(
             eventId,
