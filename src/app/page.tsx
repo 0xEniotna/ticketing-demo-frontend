@@ -1,42 +1,67 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { EventCard } from './components/EventCard';
 import { mockEvents, featuredMockEvents } from './data/events';
 import { useContract } from './contexts/ContractContext';
 import { EventInfo } from './contracts/ticketingContract';
 import { Event } from './types';
+import { useWallet } from './utils/useWallet';
+import { useWalkthrough } from './utils/WalkthroughContext';
 
-// Modified to use async function to fetch event name from the contract
-async function mapContractEventToUIEvent(
-  event: EventInfo,
-  id: string,
-  ticketingContract: any
-): Promise<Event> {
+// Utility to load cached events from localStorage
+const loadCachedEvents = (): { events: Event[]; timestamp: number } | null => {
+  if (typeof window === 'undefined') return null;
+  const cached = localStorage.getItem('cachedEvents');
+  if (cached) {
+    try {
+      const parsed = JSON.parse(cached);
+      // Validate the cached data (basic check)
+      if (
+        parsed.events &&
+        Array.isArray(parsed.events) &&
+        parsed.events.length > 0 &&
+        parsed.events[0].id
+      ) {
+        // Check if cache is fresh (less than 24 hours old)
+        const isFresh = Date.now() - parsed.timestamp < 24 * 60 * 60 * 1000; // 24 hours
+        if (!isFresh) {
+          console.log('Cache is older than 24 hours, will refresh');
+        }
+        return parsed;
+      }
+    } catch (e) {
+      console.error('Error parsing cached events:', e);
+    }
+  }
+  return null;
+};
+
+// Utility to save events to localStorage
+const saveCachedEvents = (events: Event[]) => {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(
+      'cachedEvents',
+      JSON.stringify({
+        events: events,
+        timestamp: Date.now(),
+      })
+    );
+  } catch (e) {
+    console.error('Error saving cached events:', e);
+  }
+};
+
+// Modified to remove redundant name fetching
+function mapContractEventToUIEvent(event: EventInfo, id: string): Event {
   let imageNum = (Number(id) % 5) + 1;
   if (isNaN(imageNum) || imageNum < 1 || imageNum > 5) imageNum = 1;
 
   let eventName = `Event #${id}`;
-
   if (event.name && event.name !== 'Unnamed Event') {
     eventName = event.name;
-  } else {
-    // If not, try to fetch it
-    try {
-      if (ticketingContract) {
-        const name = await ticketingContract.getEventName(BigInt(id));
-
-        // If the name is empty or 'Unnamed Event', fall back to the generic name
-        if (name && name !== 'Unnamed Event') {
-          eventName = name;
-        } else {
-          console.log(`Using fallback name: Event #${id}`);
-        }
-      }
-    } catch (error) {
-      console.error(`Error getting event name for event ${id}:`, error);
-    }
   }
 
   return {
@@ -63,96 +88,187 @@ async function mapContractEventToUIEvent(
 }
 
 export default function Home() {
+  const cachedData = loadCachedEvents();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('');
-  const [events, setEvents] = useState<Event[]>([]);
+  const [events, setEvents] = useState<Event[]>(cachedData?.events || []);
   const [contractEvents, setContractEvents] = useState<EventInfo[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(events.length === 0);
+  const [isFetchingInBackground, setIsFetchingInBackground] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState<number>(
+    cachedData?.timestamp || Date.now()
+  );
   const [error, setError] = useState<string | null>(null);
   const [isFilterOpen, setIsFilterOpen] = useState(false);
-
+  const { account, requestApprovals } = useWallet();
   const { ticketingContract, loading: contractLoading } = useContract();
+  const { setStepIndex, stepIndex, setRunTour, triggerNext } = useWalkthrough();
+
+  const fetchEvents = useCallback(
+    async (showLoadingState = false) => {
+      if (!ticketingContract) {
+        setEvents(mockEvents);
+        saveCachedEvents(mockEvents);
+        setIsLoading(false);
+        return;
+      }
+
+      if (showLoadingState) {
+        setIsLoading(true);
+      } else {
+        setIsFetchingInBackground(true);
+      }
+
+      setError(null);
+      try {
+        const fetchedEvents = await ticketingContract.getEvents();
+        setContractEvents(fetchedEvents);
+
+        const mappedEvents = fetchedEvents
+          .map((event) => mapContractEventToUIEvent(event, event.id.toString()))
+          .reverse();
+        const combinedEvents = [...mappedEvents, ...mockEvents];
+
+        // Save each event individually to localStorage for quick access
+        mappedEvents.forEach((event) => {
+          try {
+            localStorage.setItem(`event_${event.id}`, JSON.stringify(event));
+            // Add a timestamp to track when this data was cached
+            localStorage.setItem(
+              `event_${event.id}_timestamp`,
+              Date.now().toString()
+            );
+          } catch (e) {
+            console.error(`Error saving event ${event.id} to localStorage:`, e);
+          }
+        });
+
+        // Better detection of changes by comparing event IDs
+        const currentEventIds = new Set(events.map((e) => e.id));
+        const newEventIds = new Set(combinedEvents.map((e) => e.id));
+
+        // Check if there are new events or if total count has changed
+        const hasNewEvents = combinedEvents.some(
+          (e) => !currentEventIds.has(e.id)
+        );
+        const hasRemovedEvents = events.some((e) => !newEventIds.has(e.id));
+        const countChanged = currentEventIds.size !== newEventIds.size;
+
+        if (hasNewEvents || hasRemovedEvents || countChanged) {
+          console.log('Events have changed, updating state');
+          setEvents(combinedEvents);
+          setLastUpdated(Date.now());
+          saveCachedEvents(combinedEvents);
+        } else {
+          console.log('No changes in events, keeping current state');
+          setLastUpdated(Date.now());
+        }
+      } catch (err) {
+        console.error('Error fetching events:', err);
+        setError('Failed to load events. Showing cached or demo data instead.');
+        // Only use mock data if we don't have cached events
+        if (events.length === 0) {
+          setEvents(mockEvents);
+          saveCachedEvents(mockEvents);
+        }
+      } finally {
+        setIsLoading(false);
+        setIsFetchingInBackground(false);
+      }
+    },
+    [ticketingContract, events]
+  );
 
   useEffect(() => {
     let isMounted = true;
 
-    async function fetchEvents() {
-      if (!ticketingContract) {
-        if (isMounted) {
-          setEvents(mockEvents);
-          setIsLoading(false);
-        }
-        return;
-      }
-      setIsLoading(true);
-      setError(null);
-      try {
-        const fetchedEvents = await ticketingContract.getEvents();
-        if (isMounted) {
-          setContractEvents(fetchedEvents);
-
-          // Since we now have an async mapping function, we need to use Promise.all
-          const mappedEventsPromises = fetchedEvents.map((event) =>
-            mapContractEventToUIEvent(
-              event,
-              event.id.toString(),
-              ticketingContract
-            )
-          );
-
-          const mappedEvents = await Promise.all(mappedEventsPromises);
-          setEvents([...mappedEvents, ...mockEvents]);
-        }
-      } catch (err) {
-        console.error('Error fetching events:', err);
-        if (isMounted) {
-          setError('Failed to load events. Showing demo data instead.');
-          setEvents(mockEvents);
-        }
-      } finally {
-        if (isMounted) setIsLoading(false);
-      }
-    }
-
     if (!contractLoading) {
-      fetchEvents();
-      const refreshInterval = setInterval(fetchEvents, 300000);
+      // First load: if we have cached events, don't show loading state
+      // and only fetch new events if cache is stale
+      const cachedData = loadCachedEvents();
+      const cacheAge = cachedData
+        ? Date.now() - cachedData.timestamp
+        : Infinity;
+      const shouldRefreshImmediately =
+        !cachedData || cacheAge > 24 * 60 * 60 * 1000; // 24 hours
+
+      if (events.length > 0) {
+        if (shouldRefreshImmediately) {
+          console.log('Cache is stale or missing, refreshing immediately');
+          fetchEvents(false); // Fetch in background
+        } else {
+          console.log(
+            'Using cached events, age:',
+            Math.round(cacheAge / 3600000),
+            'hours'
+          );
+          // Don't refresh if cache is fresh enough
+        }
+      } else {
+        fetchEvents(true); // Show loading state when no cached data
+      }
+
+      // Less frequent background refresh (30 minutes instead of 5)
+      const refreshInterval = setInterval(() => {
+        if (!isMounted) return;
+
+        // Only refresh if user has been active in the last hour
+        const lastUserActivity = localStorage.getItem('lastUserActivity');
+        const userWasRecentlyActive =
+          lastUserActivity &&
+          Date.now() - parseInt(lastUserActivity) < 60 * 60 * 1000;
+
+        if (userWasRecentlyActive) {
+          console.log('Performing scheduled refresh');
+          fetchEvents(false);
+        } else {
+          console.log('Skipping scheduled refresh due to user inactivity');
+        }
+      }, 30 * 60 * 1000); // 30 minutes
+
+      // Track user activity
+      const trackActivity = () => {
+        localStorage.setItem('lastUserActivity', Date.now().toString());
+      };
+
+      window.addEventListener('click', trackActivity);
+      window.addEventListener('keypress', trackActivity);
+      window.addEventListener('scroll', trackActivity);
+
+      // Set initial activity timestamp
+      trackActivity();
+
       return () => {
         isMounted = false;
         clearInterval(refreshInterval);
+        window.removeEventListener('click', trackActivity);
+        window.removeEventListener('keypress', trackActivity);
+        window.removeEventListener('scroll', trackActivity);
       };
     }
+
     return () => {
       isMounted = false;
     };
-  }, [ticketingContract, contractLoading]);
+  }, [contractLoading, fetchEvents, events.length]);
 
-  const handleRefresh = async () => {
+  // Debounce the handleRefresh function
+  const debounce = (func: (...args: any[]) => void, wait: number) => {
+    let timeout: NodeJS.Timeout;
+    return (...args: any[]) => {
+      clearTimeout(timeout);
+      timeout = setTimeout(() => func(...args), wait);
+    };
+  };
+
+  const handleRefresh = debounce(async () => {
     if (!ticketingContract) {
       setEvents(mockEvents);
+      saveCachedEvents(mockEvents);
       return;
     }
-    setIsLoading(true);
-    setError(null);
-    try {
-      const fetchedEvents = await ticketingContract.getEvents();
-      setContractEvents(fetchedEvents);
-
-      // Since we now have an async mapping function, we need to use Promise.all
-      const mappedEventsPromises = fetchedEvents.map((event) =>
-        mapContractEventToUIEvent(event, event.id.toString(), ticketingContract)
-      );
-
-      const mappedEvents = await Promise.all(mappedEventsPromises);
-      setEvents([...mappedEvents, ...mockEvents]);
-    } catch (err) {
-      console.error('Error fetching events:', err);
-      setError('Failed to load events. Showing demo data instead.');
-      setEvents(mockEvents);
-    } finally {
-      setIsLoading(false);
-    }
-  };
+    await fetchEvents(true); // Show loading state for manual refresh
+  }, 500);
 
   const categories = [...new Set(events.flatMap((event) => event.categories))];
   const filteredEvents = events.filter((event) => {
@@ -165,6 +281,40 @@ export default function Home() {
   });
 
   const displayFeaturedEvents = featuredMockEvents;
+
+  const handleApprove = async () => {
+    if (!account) {
+      console.log('No account found');
+      return;
+    }
+    await requestApprovals([
+      {
+        tokenAddress:
+          '0x049D36570D4e46f48e99674bd3fcc84644DdD6b96F7C741B1562B82f9e004dC7',
+        amount: '100000000000000000',
+        spender: account.address,
+      },
+    ]);
+  };
+
+  // Helper function to format the last updated time
+  const formatLastUpdated = () => {
+    const now = Date.now();
+    const diff = now - lastUpdated;
+
+    if (diff < 60000) {
+      // less than 1 minute
+      return 'just now';
+    } else if (diff < 3600000) {
+      // less than 1 hour
+      return `${Math.floor(diff / 60000)} minutes ago`;
+    } else if (diff < 86400000) {
+      // less than 1 day
+      return `${Math.floor(diff / 3600000)} hours ago`;
+    } else {
+      return new Date(lastUpdated).toLocaleString();
+    }
+  };
 
   return (
     <div className="min-h-screen bg-gray-50 font-sans">
@@ -241,118 +391,6 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Featured Events */}
-      <section className="py-16 bg-gradient-to-b from-gray-50 to-white">
-        <div className="container mx-auto px-6">
-          <h2 className="text-3xl md:text-4xl font-bold text-gray-800 text-center mb-4 animate-fade-in">
-            Spotlight Events
-          </h2>
-          <p className="text-gray-600 text-center mb-12 max-w-lg mx-auto">
-            Discover our curated selection of must-see experiences.
-          </p>
-          {isLoading ? (
-            <div className="flex overflow-x-auto snap-x snap-mandatory gap-6 pb-6 scrollbar-thin scrollbar-thumb-indigo-300 scrollbar-track-indigo-100">
-              {[...Array(3)].map((_, i) => (
-                <div
-                  key={i}
-                  className="animate-pulse bg-gray-200 rounded-xl h-72 w-80 flex-shrink-0 snap-center"
-                >
-                  <div className="h-48 bg-gray-300 rounded-t-xl"></div>
-                  <div className="p-4 space-y-2">
-                    <div className="h-4 bg-gray-300 rounded w-3/4"></div>
-                    <div className="h-4 bg-gray-300 rounded w-1/2"></div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : displayFeaturedEvents.length > 0 ? (
-            <div className="relative">
-              <div className="flex overflow-x-auto snap-x snap-mandatory gap-6 pb-6 scrollbar-thin scrollbar-thumb-indigo-300 scrollbar-track-indigo-100">
-                {displayFeaturedEvents.map((event) => (
-                  <div
-                    key={event.id}
-                    className="w-80 flex-shrink-0 snap-center transform transition-all hover:scale-105 hover:shadow-lg"
-                  >
-                    <EventCard event={event} compact />
-                  </div>
-                ))}
-              </div>
-              <button
-                className="absolute left-0 top-1/2 transform -translate-y-1/2 bg-indigo-500 text-white p-2 rounded-full shadow-md hover:bg-indigo-600 transition-all"
-                onClick={() => {
-                  const container = document.querySelector('.overflow-x-auto');
-                  if (container)
-                    container.scrollBy({ left: -300, behavior: 'smooth' });
-                }}
-                aria-label="Scroll left"
-              >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  className="h-5 w-5"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth="2"
-                    d="M15 19l-7-7 7-7"
-                  />
-                </svg>
-              </button>
-              <button
-                className="absolute right-0 top-1/2 transform -translate-y-1/2 bg-indigo-500 text-white p-2 rounded-full shadow-md hover:bg-indigo-600 transition-all"
-                onClick={() => {
-                  const container = document.querySelector('.overflow-x-auto');
-                  if (container)
-                    container.scrollBy({ left: 300, behavior: 'smooth' });
-                }}
-                aria-label="Scroll right"
-              >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  className="h-5 w-5"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth="2"
-                    d="M9 5l7 7-7 7"
-                  />
-                </svg>
-              </button>
-            </div>
-          ) : (
-            <div className="text-center p-10 bg-white rounded-xl shadow-md animate-fade-in">
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                className="h-12 w-12 mx-auto text-gray-400 mb-4"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth="2"
-                  d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                />
-              </svg>
-              <p className="text-gray-600 mb-2">
-                No spotlight events right now.
-              </p>
-              <p className="text-gray-500 text-sm">
-                More exciting events coming soon!
-              </p>
-            </div>
-          )}
-        </div>
-      </section>
-
       {/* All Events */}
       <section className="py-16 bg-gray-100">
         <div className="container mx-auto px-6">
@@ -380,8 +418,6 @@ export default function Home() {
                         type="radio"
                         name="category"
                         className="radio radio-primary"
-                        checked={selectedCategory === ''}
-                        onChange={() => setSelectedCategory('')}
                       />
                       <span className="text-sm font-medium text-gray-700">
                         All Categories
@@ -396,8 +432,6 @@ export default function Home() {
                           type="radio"
                           name="category"
                           className="radio radio-primary"
-                          checked={selectedCategory === category}
-                          onChange={() => setSelectedCategory(category)}
                         />
                         <span className="text-sm text-gray-700">
                           {category}
@@ -410,20 +444,48 @@ export default function Home() {
             </div>
 
             {/* Events Grid */}
-            <div className="flex-1">
+            <div className="flex-1" id="events-grid">
               <div className="flex justify-between items-center mb-8 animate-fade-in">
-                <h2 className="text-3xl font-bold text-gray-800">
-                  Upcoming Events
-                </h2>
+                <div>
+                  <h2 className="text-3xl font-bold text-gray-800">
+                    Upcoming Events
+                  </h2>
+                  <p className="text-sm text-gray-500 mt-1">
+                    Last updated: {formatLastUpdated()}{' '}
+                    {isFetchingInBackground && (
+                      <span className="inline-flex items-center text-blue-600 font-medium">
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          className="h-3 w-3 text-blue-600 animate-spin mr-1"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth="2"
+                            d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                          />
+                        </svg>
+                        refreshing
+                      </span>
+                    )}
+                  </p>
+                </div>
                 <div className="flex items-center gap-3">
                   <button
                     className="btn btn-ghost btn-sm flex items-center gap-2 text-indigo-600 hover:bg-indigo-100 rounded-full transition-all"
                     onClick={handleRefresh}
-                    disabled={isLoading}
+                    disabled={isLoading || isFetchingInBackground}
                   >
                     <svg
                       xmlns="http://www.w3.org/2000/svg"
-                      className={`h-5 w-5 ${isLoading ? 'animate-spin' : ''}`}
+                      className={`h-5 w-5 ${
+                        isLoading || isFetchingInBackground
+                          ? 'animate-spin'
+                          : ''
+                      }`}
                       fill="none"
                       viewBox="0 0 24 24"
                       stroke="currentColor"
@@ -466,7 +528,7 @@ export default function Home() {
                 </div>
               )}
 
-              {isLoading ? (
+              {isLoading && events.length === 0 ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                   {[...Array(6)].map((_, i) => (
                     <div
@@ -477,12 +539,32 @@ export default function Home() {
                 </div>
               ) : filteredEvents.length > 0 ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {filteredEvents.map((event) => (
+                  {filteredEvents.map((event, index) => (
                     <div
                       key={event.id}
                       className="transform transition-all hover:scale-105 hover:shadow-lg animate-fade-in-up"
+                      data-event-index={index}
+                      data-event-id={event.id}
                     >
-                      <EventCard event={event} />
+                      <EventCard
+                        event={event}
+                        onGetTickets={() => {
+                          if (event.id === '1' && stepIndex === 13) {
+                            setRunTour(false);
+                            setStepIndex(14);
+                          }
+                          // Save this event data to localStorage for quick access on the event page
+                          localStorage.setItem(
+                            `event_${event.id}`,
+                            JSON.stringify(event)
+                          );
+                          // Also save a timestamp to know when this data was cached
+                          localStorage.setItem(
+                            `event_${event.id}_timestamp`,
+                            Date.now().toString()
+                          );
+                        }}
+                      />
                     </div>
                   ))}
                 </div>

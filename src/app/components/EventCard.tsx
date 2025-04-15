@@ -13,9 +13,14 @@ interface EventCardProps {
     isBlockchainEvent?: boolean;
   };
   compact?: boolean;
+  onGetTickets?: () => void;
 }
 
-export function EventCard({ event, compact = false }: EventCardProps) {
+export function EventCard({
+  event,
+  compact = false,
+  onGetTickets,
+}: EventCardProps) {
   const isBlockchainEvent =
     event.isBlockchainEvent !== undefined
       ? event.isBlockchainEvent
@@ -118,6 +123,8 @@ export function EventCard({ event, compact = false }: EventCardProps) {
           <Link
             href={`/event/${event.id}`}
             className="btn btn-primary btn-sm text-white"
+            aria-label="Get tickets"
+            onClick={onGetTickets}
           >
             Get Tickets
           </Link>

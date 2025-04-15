@@ -2,12 +2,14 @@
 
 export const dynamic = 'force-dynamic';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useWallet } from '../utils/useWallet';
 import { useContract } from '../contexts/ContractContext';
 import { TicketCategoryType } from '../contracts/ticketingContract';
 import Link from 'next/link';
 import { Call } from 'starknet';
+import { useWalkthrough } from '../utils/WalkthroughContext';
+import { useRouter } from 'next/navigation';
 
 interface TicketCategoryForm {
   type: TicketCategoryType;
@@ -18,6 +20,8 @@ interface TicketCategoryForm {
 export default function CreateEventPage() {
   const { isConnected, account } = useWallet();
   const { ticketingContract, loading: contractLoading } = useContract();
+  const { setStepIndex, stepIndex, setRunTour, triggerNext } = useWalkthrough();
+  const router = useRouter();
 
   // Form state
   const [eventName, setEventName] = useState('');
@@ -30,13 +34,38 @@ export default function CreateEventPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [eventId, setEventId] = useState<bigint | null>(null);
+
   const [step, setStep] = useState(1);
+
+  useEffect(() => {
+    // Check if we have a pending walkthrough step
+    const pendingStep = localStorage.getItem('pending_walkthrough_step');
+    if (pendingStep === '4') {
+      // Clear the flag
+      localStorage.removeItem('pending_walkthrough_step');
+      // Wait for the component to fully render, then trigger the tour
+      setTimeout(() => {
+        console.log('Resuming walkthrough on Create Event page');
+        setRunTour(true);
+      }, 500);
+    }
+  }, [setRunTour]);
 
   const handleAddCategory = () => {
     setCategories([
       ...categories,
       { type: TicketCategoryType.GeneralEntry, price: '1', supply: '100' },
     ]);
+
+    // If we're at step 8, directly advance the walkthrough to step 9
+    if (stepIndex === 8) {
+      console.log('Category added, directly advancing walkthrough to step 9');
+      // Short delay to ensure the new category renders before highlighting it
+      setTimeout(() => {
+        setStepIndex(9);
+        setRunTour(true);
+      }, 500);
+    }
   };
 
   const handleRemoveCategory = (index: number) => {
@@ -73,14 +102,20 @@ export default function CreateEventPage() {
     }
     setIsLoading(true);
     setError(null);
+
+    // Store current stepIndex to avoid stale closures in setTimeout
+    const currentStepIndex = stepIndex;
+
     try {
       const eventTimestamp = Math.floor(new Date(eventDate).getTime() / 1000);
       const newEventId = await ticketingContract.createEvent(
         eventName,
         BigInt(eventTimestamp)
       );
+      console.log('newEventId', newEventId);
       setEventId(newEventId);
       setStep(2);
+      setStepIndex(6);
     } catch (err) {
       console.error('Error creating event:', err);
       setError('Failed to create event. Please try again.');
@@ -95,7 +130,6 @@ export default function CreateEventPage() {
       setError('Event ID not available');
       return;
     }
-
     if (!ticketingContract) {
       setError('Contract not available. Please try again later.');
       return;
@@ -106,6 +140,19 @@ export default function CreateEventPage() {
     }
     setIsLoading(true);
     setError(null);
+
+    // Store current stepIndex to avoid stale closures
+    const currentStepIndex = stepIndex;
+
+    // Check if we're in the walkthrough and should advance it
+    const inWalkthrough =
+      localStorage.getItem('walkthrough_submitting_event') === 'true';
+    if (inWalkthrough) {
+      // Clear the flag
+      localStorage.removeItem('walkthrough_submitting_event');
+      console.log('Detected event creation as part of walkthrough');
+    }
+
     const calls: Call[] = [];
     try {
       for (const category of categories) {
@@ -122,13 +169,22 @@ export default function CreateEventPage() {
       }
       const tx = await ticketingContract.executeCalls(calls);
       await account.waitForTransaction(tx);
+      await new Promise((resolve) => setTimeout(resolve, 1000));
       setStep(3);
+      setStepIndex(11);
     } catch (err) {
       console.error('Error adding categories:', err);
       setError('Failed to add ticket categories. Please try again.');
     } finally {
       setIsLoading(false);
     }
+  };
+
+  // Handler for "Back to Home" click
+  const handleBackToHome = () => {
+    setRunTour(false);
+    setStepIndex(12); // Move WalkthroughManager to step 12
+    router.push('/'); // Navigate to homepage
   };
 
   if (!isConnected) {
@@ -173,7 +229,10 @@ export default function CreateEventPage() {
           </div>
         )}
 
-        <div className="card bg-white shadow-xl rounded-xl overflow-hidden">
+        <div
+          id="create-event-form"
+          className="card bg-white shadow-xl rounded-xl overflow-hidden"
+        >
           <div className="card-body p-8">
             {/* Stepper */}
             <ul className="steps steps-horizontal w-full mb-10">
@@ -240,7 +299,11 @@ export default function CreateEventPage() {
                   <button
                     type="submit"
                     className="btn btn-primary btn-lg rounded-full px-8 transition-transform hover:scale-105"
-                    disabled={isLoading || contractLoading}
+                    disabled={
+                      isLoading ||
+                      contractLoading ||
+                      (stepIndex === 5 && !eventName)
+                    }
                     aria-label="Proceed to ticket categories"
                   >
                     {isLoading ? (
@@ -258,8 +321,15 @@ export default function CreateEventPage() {
 
             {/* Step 2: Ticket Categories */}
             {step === 2 && (
-              <form onSubmit={handleAddCategories} className="animate-fade-in">
-                <h2 className="text-2xl font-semibold text-gray-800 mb-4">
+              <form
+                onSubmit={handleAddCategories}
+                id="create-category-form"
+                className="animate-fade-in"
+              >
+                <h2
+                  id="ticket-categories-heading"
+                  className="text-2xl font-semibold text-gray-800 mb-4"
+                >
                   Configure Ticket Categories
                 </h2>
                 <p className="mb-6 text-gray-600">
@@ -271,6 +341,13 @@ export default function CreateEventPage() {
                   <div
                     key={index}
                     className="card bg-gray-100 mb-4 p-6 rounded-lg shadow-sm hover:shadow-md transition-shadow"
+                    id={
+                      index === 0
+                        ? 'category-1-form'
+                        : index === 1
+                        ? 'category-2-form'
+                        : undefined
+                    }
                   >
                     <div className="flex justify-between items-center mb-4">
                       <h3 className="text-lg font-medium text-gray-700">
@@ -416,9 +493,11 @@ export default function CreateEventPage() {
                   </button>
                   <button
                     type="submit"
-                    className="btn btn-primary btn-lg rounded-full px-8 transition-transform hover:scale-105"
+                    id="create-event-submit-button"
+                    className="btn btn-primary btn-lg rounded-full px-8 transition-transform hover:scale-105 walkthrough-target"
                     disabled={isLoading || contractLoading}
                     aria-label="Create event"
+                    style={{ position: 'relative', zIndex: 50 }}
                   >
                     {isLoading ? (
                       <>
@@ -466,13 +545,13 @@ export default function CreateEventPage() {
                   >
                     View Event
                   </Link>
-                  <Link
-                    href="/"
+                  <button
+                    onClick={handleBackToHome}
                     className="btn btn-outline btn-lg rounded-full px-8 transition-transform hover:scale-105"
                     aria-label="Return to homepage"
                   >
                     Back to Home
-                  </Link>
+                  </button>
                 </div>
               </div>
             )}

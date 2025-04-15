@@ -105,6 +105,7 @@ export default function WalletPage() {
             </div>
 
             <button
+              id="connect-wallet-button"
               className="btn btn-primary w-full"
               onClick={handleConnect}
               disabled={isConnecting}

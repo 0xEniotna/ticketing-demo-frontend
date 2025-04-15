@@ -14,6 +14,7 @@ import Link from 'next/link';
 import { mockEvents } from '../../data/events';
 import { ethers } from 'ethers';
 import { CairoCustomEnum, Call } from 'starknet';
+import { useWalkthrough } from '../../utils/WalkthroughContext';
 
 // Interface for ticket category edit form
 interface TicketCategoryForm {
@@ -27,12 +28,34 @@ export default function EventPage() {
   const eventId = params.id ? BigInt(params.id as string) : BigInt(0);
   const { ticketingContract, loading: contractLoading } = useContract();
   const { account, isConnected } = useWallet();
+  const { setStepIndex, stepIndex, setRunTour, triggerNext } = useWalkthrough();
 
+  // Add a function to load cached event data
+  const loadCachedEventData = () => {
+    if (typeof window === 'undefined') return null;
+
+    try {
+      const cachedEvent = localStorage.getItem(`event_${params.id}`);
+      if (cachedEvent) {
+        return JSON.parse(cachedEvent);
+      }
+    } catch (e) {
+      console.error('Error loading cached event data:', e);
+    }
+
+    return null;
+  };
+
+  // Initialize state with cached data if available
+  const cachedEvent = loadCachedEventData();
   const [event, setEvent] = useState<EventInfo | null>(null);
   const [categories, setCategories] = useState<TicketCategory[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(!cachedEvent); // Only show loading if no cached data
   const [error, setError] = useState<string | null>(null);
   const [ticketPurchased, setTicketPurchased] = useState(false);
+
+  // Improved UI state handling for better transitions
+  const [hasAttemptedLoad, setHasAttemptedLoad] = useState(false);
 
   // New state variables for creator management
   const [isCreator, setIsCreator] = useState(false);
@@ -40,6 +63,16 @@ export default function EventPage() {
   const [categoryForms, setCategoryForms] = useState<TicketCategoryForm[]>([]);
   const [updateLoading, setUpdateLoading] = useState(false);
   const [updateSuccess, setUpdateSuccess] = useState(false);
+
+  // Create UI event data that can use cached data while loading full event info
+  const [uiEventData, setUiEventData] = useState({
+    name: cachedEvent?.title || 'Loading...',
+    date: cachedEvent?.date || 'Loading...',
+    venue: cachedEvent?.location || 'To Be Announced',
+    description: cachedEvent?.description || 'Loading event details...',
+    image: cachedEvent?.image || '/images/event1.png',
+    creator: 'Loading...',
+  });
 
   const handleAddCategory = () => {
     setCategoryForms([
@@ -57,10 +90,27 @@ export default function EventPage() {
 
     async function fetchEventData() {
       if (!ticketingContract || eventId === BigInt(0)) return;
-      if (!event) setIsLoading(true);
+
+      // Check if we've fetched this event data recently (within the last 5 minutes)
+      const lastFetchTime = localStorage.getItem(
+        `event_${params.id}_last_fetch`
+      );
+      const shouldRefetch =
+        !lastFetchTime || Date.now() - parseInt(lastFetchTime) > 5 * 60 * 1000;
+
+      // If we have cached data and it was fetched less than 5 minutes ago, skip fetching
+      if (cachedEvent && !shouldRefetch && event) {
+        console.log('Using recently cached event data, skipping fetch');
+        return;
+      }
+
+      // Only show loading if we don't have cached data
+      if (!cachedEvent && !event) setIsLoading(true);
+
       setError(null);
 
       try {
+        console.log('Fetching full event data from blockchain');
         const eventInfo = await ticketingContract.getEvent(eventId);
         const name = await ticketingContract
           .getEventName(eventId)
@@ -72,6 +122,41 @@ export default function EventPage() {
 
         if (isMounted) {
           setEvent(eventInfo);
+
+          // Update last fetch timestamp
+          localStorage.setItem(
+            `event_${params.id}_last_fetch`,
+            Date.now().toString()
+          );
+
+          // Update UI data with blockchain data
+          const formattedCreator = eventInfo?.creator
+            ? `0x${BigInt(eventInfo.creator)
+                .toString(16)
+                .padStart(40, '0')
+                .slice(0, 6)}...${BigInt(eventInfo.creator)
+                .toString(16)
+                .slice(-4)}`
+            : 'Unknown';
+
+          setUiEventData((prevData) => ({
+            ...prevData,
+            name: eventInfo.name || cachedEvent?.title || 'Unknown Event',
+            date:
+              cachedEvent?.date ||
+              (eventInfo?.start_timestamp
+                ? new Date(
+                    Number(eventInfo.start_timestamp) * 1000
+                  ).toLocaleString('en-US', {
+                    year: 'numeric',
+                    month: 'long',
+                    day: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  })
+                : 'TBD'),
+            creator: formattedCreator,
+          }));
 
           // Check if current user is the event creator
           if (isConnected && account) {
@@ -131,7 +216,11 @@ export default function EventPage() {
         console.error('Error fetching event:', err);
         if (isMounted) setError('Failed to load event. Please try again.');
       } finally {
-        if (isMounted) setIsLoading(false);
+        if (isMounted) {
+          setIsLoading(false);
+          // Mark that we've attempted to load the data, regardless of success/failure
+          setHasAttemptedLoad(true);
+        }
       }
     }
 
@@ -143,7 +232,52 @@ export default function EventPage() {
         clearInterval(refreshInterval);
       };
     }
-  }, [eventId, ticketingContract, contractLoading, account, isConnected]);
+  }, [
+    eventId,
+    ticketingContract,
+    contractLoading,
+    account,
+    isConnected,
+    cachedEvent,
+  ]);
+
+  // Add special effect to handle walkthrough transitions
+  useEffect(() => {
+    // Check if we're in the walkthrough and at step 14
+    if (stepIndex === 14 && !isLoading && event) {
+      console.log(
+        'Event page loaded and walkthrough at step 14, ensuring elements are properly set up'
+      );
+
+      // Make sure the #buy-ticket-card element has proper IDs for the walkthrough to target
+      const buyTicketCard = document.querySelector('#buy-ticket-card');
+      const buyTicketSection = document.querySelector('#buy-ticket-section');
+
+      if (buyTicketCard) {
+        console.log(
+          'Buy ticket card is already available for step 15 when needed'
+        );
+      } else if (buyTicketSection) {
+        console.log('Buy ticket section found but card not available yet');
+
+        // Set up an observer to ensure card gets proper ID when it appears
+        const observer = new MutationObserver((mutations) => {
+          const newBuyTicketCard = document.querySelector('#buy-ticket-card');
+          if (newBuyTicketCard) {
+            console.log(
+              'Buy ticket card appeared in DOM, marking it for step 15'
+            );
+            observer.disconnect();
+          }
+        });
+
+        observer.observe(buyTicketSection, {
+          childList: true,
+          subtree: true,
+        });
+      }
+    }
+  }, [stepIndex, isLoading, event]);
 
   // Handle form field changes
   const handleCategoryChange = (
@@ -308,49 +442,187 @@ export default function EventPage() {
     }
   };
 
-  const handleTicketPurchaseSuccess = () => setTicketPurchased(true);
+  const handleTicketPurchaseSuccess = () => {
+    if (stepIndex === 15) {
+      setStepIndex(16);
+    }
+    setTicketPurchased(true);
+  };
 
-  const mockEvent = mockEvents.find(
-    (mockEvt) => String(mockEvt.id) === String(eventId)
-  );
-  const formattedCreator = event?.creator
-    ? `0x${BigInt(event.creator)
-        .toString(16)
-        .padStart(40, '0')
-        .slice(0, 6)}...${BigInt(event.creator).toString(16).slice(-4)}`
-    : 'Unknown';
-
-  const eventData = {
-    name: event?.name || mockEvent?.title || 'Unknown Event',
-    date:
-      mockEvent?.date ||
-      (event?.start_timestamp
-        ? new Date(Number(event.start_timestamp) * 1000).toLocaleString(
-            'en-US',
-            {
-              year: 'numeric',
-              month: 'long',
-              day: 'numeric',
-              hour: '2-digit',
-              minute: '2-digit',
-            }
-          )
-        : 'TBD'),
-    venue: mockEvent?.location || 'To Be Announced',
-    description: mockEvent?.description || 'No description available.',
-    image: mockEvent?.image || '/images/event1.png',
-    creator: formattedCreator,
+  const onViewTicket = () => {
+    if (stepIndex === 16) {
+      setRunTour(false);
+      setStepIndex(17);
+    }
   };
 
   if (isLoading || contractLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="loading loading-spinner loading-lg text-teal-500"></div>
+      <div className="min-h-screen bg-gray-50 py-12 px-4">
+        <div className="container mx-auto max-w-5xl">
+          <div className="flex flex-col lg:flex-row gap-8">
+            {/* Event Details with skeleton loading */}
+            <div className="lg:w-2/3">
+              <div className="flex justify-between items-center mb-6 animate-fade-in">
+                <Link
+                  href="/"
+                  className="btn btn-ghost text-teal-600 hover:bg-teal-100 rounded-full gap-2 transition-all"
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    className="h-5 w-5"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth="2"
+                      d="M15 19l-7-7 7-7"
+                    />
+                  </svg>
+                  Back
+                </Link>
+              </div>
+
+              <div className="card bg-white/90 backdrop-blur-md shadow-xl rounded-xl overflow-hidden transition-all hover:shadow-2xl animate-fade-in-up">
+                {cachedEvent ? (
+                  // If we have cached data, show it while loading full details
+                  <>
+                    <figure className="relative h-72">
+                      <img
+                        src={uiEventData.image}
+                        alt={uiEventData.name}
+                        className="w-full h-full object-cover"
+                      />
+                      <div className="absolute inset-0 bg-black/20 flex items-center justify-center">
+                        <div className="bg-white/80 backdrop-blur-sm px-6 py-2 rounded-lg text-lg font-bold shadow-md flex items-center gap-2">
+                          <div className="loading loading-spinner loading-sm text-teal-500"></div>
+                          Loading details...
+                        </div>
+                      </div>
+                    </figure>
+                    <div className="card-body p-6">
+                      <h1 className="card-title text-4xl font-bold text-gray-800 mb-4 capitalize tracking-tight">
+                        {uiEventData.name}
+                      </h1>
+                      <div className="animate-pulse flex space-x-4 mb-4">
+                        <div className="rounded-full bg-teal-100 h-6 w-24"></div>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-6">
+                        <div className="flex items-center gap-3">
+                          <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            className="h-6 w-6 text-teal-500"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth="2"
+                              d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
+                            />
+                          </svg>
+                          <span className="text-gray-700">
+                            {uiEventData.date}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            className="h-6 w-6 text-teal-500"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth="2"
+                              d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"
+                            />
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth="2"
+                              d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"
+                            />
+                          </svg>
+                          <span className="text-gray-700">
+                            {uiEventData.venue}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="divider my-6"></div>
+
+                      <h2 className="text-2xl font-semibold text-gray-800 mb-3">
+                        About
+                      </h2>
+                      <p className="text-gray-600 leading-relaxed">
+                        {uiEventData.description}
+                      </p>
+
+                      <div className="divider my-6"></div>
+                      <h2 className="text-2xl font-semibold text-gray-800 mb-4">
+                        Ticket Options
+                      </h2>
+                      <div className="space-y-4 animate-pulse">
+                        <div className="h-16 bg-teal-50/50 rounded-lg"></div>
+                        <div className="h-16 bg-teal-50/50 rounded-lg"></div>
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  // Standard loading skeleton when no cached data
+                  <>
+                    <div className="animate-pulse">
+                      <div className="h-72 bg-gray-200"></div>
+                      <div className="card-body p-6">
+                        <div className="h-10 bg-gray-200 rounded-lg mb-4"></div>
+                        <div className="h-6 bg-gray-200 rounded-lg w-1/4 mb-6"></div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-6">
+                          <div className="h-6 bg-gray-200 rounded-lg"></div>
+                          <div className="h-6 bg-gray-200 rounded-lg"></div>
+                        </div>
+                        <div className="divider my-6"></div>
+                        <div className="h-8 bg-gray-200 rounded-lg w-1/4 mb-3"></div>
+                        <div className="h-24 bg-gray-200 rounded-lg mb-6"></div>
+                        <div className="divider my-6"></div>
+                        <div className="h-8 bg-gray-200 rounded-lg w-1/4 mb-4"></div>
+                        <div className="space-y-4">
+                          <div className="h-16 bg-gray-200 rounded-lg"></div>
+                          <div className="h-16 bg-gray-200 rounded-lg"></div>
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+
+            {/* Buy Ticket Section - Skeleton */}
+            <div className="lg:w-1/3">
+              <div className="sticky top-20">
+                <div className="card bg-white/90 backdrop-blur-md shadow-xl rounded-xl p-6 animate-pulse">
+                  <div className="h-8 bg-gray-200 rounded-lg w-1/2 mb-4"></div>
+                  <div className="h-24 bg-gray-200 rounded-lg mb-4"></div>
+                  <div className="h-12 bg-gray-200 rounded-full"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     );
   }
 
-  if (error || !event) {
+  // Only show error if there's an actual error and we're not just loading
+  if (error && hasAttemptedLoad) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="card bg-white/90 backdrop-blur-md shadow-lg p-6 rounded-xl max-w-md w-full animate-fade-in">
@@ -369,7 +641,40 @@ export default function EventPage() {
                 d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"
               />
             </svg>
-            <span>{error || 'Event not found'}</span>
+            <span>{error}</span>
+          </div>
+          <Link
+            href="/"
+            className="btn bg-teal-500 text-white mt-4 hover:bg-teal-600 transition-all rounded-full"
+          >
+            Back to Events
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  // If no event data but we've attempted to load, show the event not found message
+  if (!event && hasAttemptedLoad) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="card bg-white/90 backdrop-blur-md shadow-lg p-6 rounded-xl max-w-md w-full animate-fade-in">
+          <div className="alert alert-warning shadow-md">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              className="h-6 w-6 text-orange-600"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="2"
+                d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+              />
+            </svg>
+            <span>Event not found</span>
           </div>
           <Link
             href="/"
@@ -384,7 +689,7 @@ export default function EventPage() {
 
   return (
     <div className="min-h-screen bg-gray-50 py-12 px-4">
-      <div className="container mx-auto max-w-5xl">
+      <div className="container mx-auto max-w-5xl" id="event-page">
         <div className="flex flex-col lg:flex-row gap-8">
           {/* Event Details */}
           <div className="lg:w-2/3">
@@ -410,7 +715,7 @@ export default function EventPage() {
                 Back
               </Link>
               <div className="flex gap-2">
-                {isCreator && event.is_active && (
+                {isCreator && event && event.is_active && (
                   <button
                     className="btn btn-ghost text-indigo-600 hover:bg-indigo-100 rounded-full gap-2 transition-all"
                     onClick={() => setIsEditMode(!isEditMode)}
@@ -460,11 +765,11 @@ export default function EventPage() {
             <div className="card bg-white/90 backdrop-blur-md shadow-xl rounded-xl overflow-hidden transition-all hover:shadow-2xl animate-fade-in-up">
               <figure className="relative h-72">
                 <img
-                  src={eventData.image}
-                  alt={eventData.name}
+                  src={uiEventData.image}
+                  alt={uiEventData.name}
                   className="w-full h-full object-cover"
                 />
-                {!event.is_active && (
+                {event && !event.is_active && (
                   <div className="absolute inset-0 bg-black/70 flex items-center justify-center">
                     <span className="bg-red-600 text-white px-6 py-2 rounded-full text-lg font-bold transform rotate-12 shadow-md">
                       Cancelled
@@ -474,17 +779,23 @@ export default function EventPage() {
               </figure>
               <div className="card-body p-6">
                 <h1 className="card-title text-4xl font-bold text-gray-800 mb-4 capitalize tracking-tight">
-                  {eventData.name}
+                  {uiEventData.name}
                 </h1>
                 <div className="flex flex-wrap gap-2 mb-4">
                   <span
                     className={`badge ${
-                      event.is_active
+                      event && event.is_active
                         ? 'bg-teal-500/20 text-teal-700'
-                        : 'bg-red-500/20 text-red-700'
+                        : event
+                        ? 'bg-red-500/20 text-red-700'
+                        : 'bg-gray-300/20 text-gray-700'
                     } border-none font-medium`}
                   >
-                    {event.is_active ? 'Active' : 'Cancelled'}
+                    {event
+                      ? event.is_active
+                        ? 'Active'
+                        : 'Cancelled'
+                      : 'Loading status...'}
                   </span>
                   {isCreator && (
                     <span className="badge bg-indigo-500/20 text-indigo-700 border-none font-medium">
@@ -509,7 +820,7 @@ export default function EventPage() {
                         d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
                       />
                     </svg>
-                    <span className="text-gray-700">{eventData.date}</span>
+                    <span className="text-gray-700">{uiEventData.date}</span>
                   </div>
                   <div className="flex items-center gap-3">
                     <svg
@@ -532,7 +843,7 @@ export default function EventPage() {
                         d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"
                       />
                     </svg>
-                    <span className="text-gray-700">{eventData.venue}</span>
+                    <span className="text-gray-700">{uiEventData.venue}</span>
                   </div>
                   <div className="flex items-center gap-3">
                     <svg
@@ -550,7 +861,7 @@ export default function EventPage() {
                       />
                     </svg>
                     <span className="text-gray-700">
-                      By {eventData.creator}
+                      By {uiEventData.creator}
                     </span>
                   </div>
                 </div>
@@ -561,7 +872,7 @@ export default function EventPage() {
                   About
                 </h2>
                 <p className="text-gray-600 leading-relaxed">
-                  {eventData.description}
+                  {uiEventData.description}
                 </p>
 
                 {categories.length > 0 && (
@@ -637,7 +948,12 @@ export default function EventPage() {
                         ) : (
                           categoryForms.map((category, index) => (
                             <div
-                              key={index}
+                              key={`form-category-${index}-${
+                                typeof category.type === 'object'
+                                  ? (category.type as any).activeVariant?.() ||
+                                    index
+                                  : category.type
+                              }`}
                               className="card bg-gray-100 mb-4 p-6 rounded-lg shadow-sm hover:shadow-md transition-shadow"
                             >
                               <div className="flex justify-between items-center mb-4">
@@ -801,17 +1117,14 @@ export default function EventPage() {
                               category.category_type as unknown as CairoCustomEnum
                             ).activeVariant();
 
-                            const categoryName = categoryType;
                             return (
                               <div
-                                key={`${eventId.toString()}-${
-                                  category.category_type
-                                }`}
+                                key={`category-${eventId.toString()}-${categoryType}-${category.price.toString()}`}
                                 className="flex justify-between items-center p-4 bg-teal-50/50 rounded-lg hover:bg-teal-100 transition-all"
                               >
                                 <div>
                                   <h3 className="font-medium text-gray-800">
-                                    {categoryName}
+                                    {categoryType}
                                   </h3>
                                   <p className="text-sm text-gray-600">
                                     {category.remaining.toString()} of{' '}
@@ -837,9 +1150,12 @@ export default function EventPage() {
 
           {/* Buy Ticket Section */}
           <div className="lg:w-1/3">
-            <div className="sticky top-20">
+            <div className="sticky top-20" id="buy-ticket-section">
               {ticketPurchased ? (
-                <div className="card bg-white/90 backdrop-blur-md shadow-xl rounded-xl p-6 animate-fade-in-up">
+                <div
+                  className="card bg-white/90 backdrop-blur-md shadow-xl rounded-xl p-6 animate-fade-in-up"
+                  id="buy-ticket-success"
+                >
                   <h2 className="text-2xl font-bold text-teal-600 mb-3">
                     Success!
                   </h2>
@@ -847,18 +1163,24 @@ export default function EventPage() {
                   <Link
                     href="/my-tickets"
                     className="btn bg-gradient-to-r from-indigo-500 to-teal-500 text-white rounded-full w-full hover:from-indigo-600 hover:to-teal-600 transition-all"
+                    onClick={onViewTicket}
                   >
                     View My Tickets
                   </Link>
                 </div>
-              ) : event.is_active ? (
-                <div className="card bg-white/90 backdrop-blur-md shadow-xl rounded-xl p-6 transition-all hover:shadow-2xl animate-fade-in-up">
-                  <BuyTicket
-                    eventId={eventId}
-                    onSuccess={handleTicketPurchaseSuccess}
-                  />
+              ) : event && event.is_active ? (
+                <div
+                  className="card bg-white/90 backdrop-blur-md shadow-xl rounded-xl p-6 transition-all hover:shadow-2xl animate-fade-in-up"
+                  id="buy-ticket-card"
+                >
+                  <div id="buy-ticket-component">
+                    <BuyTicket
+                      eventId={eventId}
+                      onSuccess={handleTicketPurchaseSuccess}
+                    />
+                  </div>
                 </div>
-              ) : (
+              ) : event && !event.is_active ? (
                 <div className="card bg-white/90 backdrop-blur-md shadow-xl rounded-xl p-6 animate-fade-in-up">
                   <h2 className="text-2xl font-bold text-red-600 mb-3">
                     Cancelled
@@ -867,9 +1189,24 @@ export default function EventPage() {
                     Tickets are no longer available.
                   </p>
                 </div>
+              ) : (
+                <div
+                  className="card bg-white/90 backdrop-blur-md shadow-xl rounded-xl p-6 animate-fade-in-up"
+                  id="buy-ticket-loading"
+                >
+                  <h2 className="text-2xl font-bold text-teal-600 mb-3">
+                    Loading Event...
+                  </h2>
+                  <p className="text-gray-600 mb-4">
+                    Please wait while we fetch the event details.
+                  </p>
+                  <div className="flex justify-center">
+                    <div className="loading loading-spinner loading-md text-teal-500"></div>
+                  </div>
+                </div>
               )}
 
-              {isCreator && event.is_active && !isEditMode && (
+              {isCreator && event && event.is_active && !isEditMode && (
                 <div className="mt-4 card bg-white/90 backdrop-blur-md shadow-xl rounded-xl p-6 animate-fade-in-up">
                   <h3 className="text-xl font-bold text-indigo-600 mb-2">
                     Creator Actions

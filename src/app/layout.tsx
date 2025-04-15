@@ -6,7 +6,8 @@ import Footer from './components/Footer';
 import ClientOnly from './components/ClientOnly';
 import { ContractProvider } from './contexts/ContractContext';
 import config from './utils/config';
-
+import WalkthroughManager from './components/WalkthroughManager';
+import { WalkthroughProvider } from './utils/WalkthroughContext';
 const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
@@ -27,9 +28,12 @@ export default function RootLayout({
       >
         <ClientOnly>
           <ContractProvider>
-            <Header />
-            <main className="flex-1">{children}</main>
-            <Footer />
+            <WalkthroughProvider>
+              <Header />
+              <main className="flex-1">{children}</main>
+              <Footer />
+              <WalkthroughManager />
+            </WalkthroughProvider>
           </ContractProvider>
         </ClientOnly>
       </body>

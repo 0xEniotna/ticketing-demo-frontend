@@ -124,17 +124,31 @@ export default function MyTicketsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showFakeTickets, setShowFakeTickets] = useState(true); // Control fake tickets display
+  const [processingTickets, setProcessingTickets] = useState<{
+    [key: string]: boolean;
+  }>({});
 
   useEffect(() => {
     let isMounted = true;
 
+    // Show fake tickets immediately if enabled
+    if (showFakeTickets && address) {
+      const userFakeTickets = fakeTickets.map((ticket) => ({
+        ...ticket,
+        owner: address,
+      }));
+      setTickets(userFakeTickets);
+      setIsLoading(false);
+    }
+
     async function loadUserTicketIds() {
       if (!isConnected || !address || !ticketingContract) {
         setTicketIds([]);
-        setIsLoading(false);
+        if (!showFakeTickets) setIsLoading(false);
         return;
       }
-      if (ticketIds.length === 0) setIsLoading(true);
+
+      // Don't set loading to true here since we already show fake tickets
       setError(null);
       try {
         const ids = await ticketingContract.getUserTickets(address);
@@ -142,49 +156,45 @@ export default function MyTicketsPage() {
       } catch (err) {
         console.error('Error loading ticket IDs:', err);
         if (isMounted) {
-          setError('Failed to load your tickets. Please try again later.');
+          setError(
+            'Failed to load your on-chain tickets. Showing demo tickets only.'
+          );
           setTicketIds([]);
         }
       } finally {
-        if (isMounted) setIsLoading(false);
+        if (isMounted && !showFakeTickets) setIsLoading(false);
       }
     }
 
     if (!contractLoading) {
       loadUserTicketIds();
-      const refreshInterval = setInterval(loadUserTicketIds, 120000);
-      return () => {
-        isMounted = false;
-        clearInterval(refreshInterval);
-      };
     }
     return () => {
       isMounted = false;
     };
-  }, [isConnected, address, ticketingContract, contractLoading]);
+  }, [
+    isConnected,
+    address,
+    ticketingContract,
+    contractLoading,
+    showFakeTickets,
+  ]);
 
   useEffect(() => {
     let isMounted = true;
 
+    // If we already have fake tickets loaded and we're just waiting for real ones,
+    // don't show a loading state
+    if (tickets.length > 0 && showFakeTickets) {
+      setIsLoading(false);
+    }
+
     async function loadTicketDetails() {
       if (ticketIds.length === 0 || !ticketingContract) {
-        // If no real tickets and we want to show fake ones
-        if (showFakeTickets && address) {
-          // Copy fake tickets and update owner to current user's address
-          const userFakeTickets = fakeTickets.map((ticket) => ({
-            ...ticket,
-            owner: address,
-          }));
-          setTickets(userFakeTickets);
-          setIsLoading(false);
-          return;
-        }
-        return;
+        return; // Skip loading if no real tickets, fake ones are already loaded
       }
 
-      if (tickets.length === 0 || tickets.length !== ticketIds.length)
-        setIsLoading(true);
-      setError(null);
+      // Don't set global loading, just proceed with fetching real tickets
       try {
         const loadedTickets = [];
         for (const id of ticketIds) {
@@ -198,34 +208,29 @@ export default function MyTicketsPage() {
 
         if (isMounted) {
           if (showFakeTickets && address) {
-            // Always include fake tickets when showFakeTickets is true
+            // Keep fake tickets, add real ones
             const userFakeTickets = fakeTickets.map((ticket) => ({
               ...ticket,
               owner: address,
             }));
 
-            // Combine real tickets with fake ones
-            setTickets([...loadedTickets, ...userFakeTickets]);
+            // Filter out any duplicate fake tickets if real ones with same IDs exist
+            const fakeTicketIds = userFakeTickets.map((t) => t.id.toString());
+            const realTicketIds = loadedTickets.map((t) => t.id.toString());
+            const uniqueFakeTickets = userFakeTickets.filter(
+              (t) => !realTicketIds.includes(t.id.toString())
+            );
+
+            setTickets([...loadedTickets, ...uniqueFakeTickets]);
           } else {
-            // Just show real tickets
             setTickets(loadedTickets);
           }
         }
       } catch (err) {
         console.error('Error loading ticket details:', err);
         if (isMounted) {
-          setError('Failed to load ticket details. Please try again later.');
-          // Still show fake tickets if there was an error
-          if (showFakeTickets && address) {
-            const userFakeTickets = fakeTickets.map((ticket) => ({
-              ...ticket,
-              owner: address,
-            }));
-            setTickets(userFakeTickets);
-          }
+          setError('Failed to load some ticket details from blockchain.');
         }
-      } finally {
-        if (isMounted) setIsLoading(false);
       }
     }
 
@@ -285,20 +290,29 @@ export default function MyTicketsPage() {
 
   const handleUseTicket = async (ticketId: bigint) => {
     if (!ticketingContract) return;
+
+    // Convert ticketId to string for use as object key
+    const ticketIdString = ticketId.toString();
+
     try {
-      setIsLoading(true);
+      // Only set loading state for this specific ticket
+      setProcessingTickets((prev) => ({ ...prev, [ticketIdString]: true }));
 
       // For fake tickets, just update the UI
       if (showFakeTickets && !ticketIds.includes(ticketId)) {
+        // Add a slight delay to simulate blockchain transaction
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+
         setTickets((prev) =>
           prev.map((t) => (t.id === ticketId ? { ...t, is_used: true } : t))
         );
-        setIsLoading(false);
         return;
       }
 
       // For real tickets
       await ticketingContract.useTicket(ticketId);
+
+      // Update only this ticket's status
       setTickets((prev) =>
         prev.map((t) => (t.id === ticketId ? { ...t, is_used: true } : t))
       );
@@ -306,7 +320,12 @@ export default function MyTicketsPage() {
       console.error('Error using ticket:', err);
       setError('Failed to use ticket. Please try again.');
     } finally {
-      setIsLoading(false);
+      // Clear processing state for this ticket
+      setProcessingTickets((prev) => {
+        const updated = { ...prev };
+        delete updated[ticketIdString];
+        return updated;
+      });
     }
   };
 
@@ -419,7 +438,7 @@ export default function MyTicketsPage() {
 
   return (
     <main className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100 py-12 px-4">
-      <div className="container mx-auto max-w-5xl">
+      <div className="container mx-auto max-w-5xl" id="tickets-page">
         <div className="flex justify-between items-center mb-10 animate-fade-in">
           <h1 className="text-4xl font-bold text-gray-800">My Tickets</h1>
           <div className="flex gap-4">
@@ -550,7 +569,33 @@ export default function MyTicketsPage() {
               </div>
             )}
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {showFakeTickets && ticketIds.length > 0 && (
+              <div className="mb-6 bg-warning/20 text-warning p-4 rounded-lg flex items-center gap-3 animate-fade-in">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="h-6 w-6 animate-pulse"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                    d="M13 10V3L4 14h7v7l9-11h-7z"
+                  />
+                </svg>
+                <span>
+                  <strong>Loading on-chain tickets:</strong> Fetching your real
+                  tickets from the blockchain...
+                </span>
+              </div>
+            )}
+
+            <div
+              className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
+              id="tickets-grid"
+            >
               {tickets.map((ticket) => {
                 const eventId = ticket.event_id.toString();
 
@@ -735,33 +780,43 @@ export default function MyTicketsPage() {
                           <button
                             className="btn btn-primary btn-sm rounded-full px-4 flex items-center gap-2 transition-transform hover:scale-105"
                             onClick={() => handleUseTicket(ticket.id)}
-                            disabled={isLoading}
+                            disabled={processingTickets[ticket.id.toString()]}
                             aria-label={`Use ticket for ${
                               mockEventDetails[eventId]?.name || 'Event'
                             }`}
                           >
-                            <svg
-                              xmlns="http://www.w3.org/2000/svg"
-                              className="h-4 w-4"
-                              fill="none"
-                              viewBox="0 0 24 24"
-                              stroke="currentColor"
-                            >
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth={2}
-                                d="M5 13l4 4L19 7"
-                              />
-                            </svg>
-                            Use Now
+                            {processingTickets[ticket.id.toString()] ? (
+                              <>
+                                <span className="loading loading-spinner loading-xs"></span>
+                                Processing...
+                              </>
+                            ) : (
+                              <>
+                                <svg
+                                  xmlns="http://www.w3.org/2000/svg"
+                                  className="h-4 w-4"
+                                  fill="none"
+                                  viewBox="0 0 24 24"
+                                  stroke="currentColor"
+                                >
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth={2}
+                                    d="M5 13l4 4L19 7"
+                                  />
+                                </svg>
+                                Use Now
+                              </>
+                            )}
                           </button>
                           <button
                             className="btn btn-outline btn-sm rounded-full px-4 flex items-center gap-2 transition-transform hover:scale-105"
-                            onClick={() =>
-                              handleListForSale(ticket.id, BigInt(20e18))
-                            }
-                            disabled={isLoading}
+                            // onClick={() =>
+                            //   handleListForSale(ticket.id, BigInt(20e18))
+                            // }
+
+                            disabled
                             aria-label={`Sell ticket for ${
                               mockEventDetails[eventId]?.name || 'Event'
                             }`}

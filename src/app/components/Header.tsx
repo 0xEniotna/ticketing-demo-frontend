@@ -4,12 +4,19 @@ import Link from 'next/link';
 import { useState } from 'react';
 import { useWallet } from '../utils/useWallet';
 import { STRK_ADDRESS } from '../types';
-
+import { useWalkthrough } from '../utils/WalkthroughContext';
 export default function Header() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [walletDropdownOpen, setWalletDropdownOpen] = useState(false);
-  const { connect, disconnect, isConnected, isConnecting, truncatedAddress } =
-    useWallet();
+  const {
+    connect,
+    disconnect,
+    isConnected,
+    isConnecting,
+    truncatedAddress,
+    address,
+  } = useWallet();
+  const { setStepIndex, stepIndex, setRunTour } = useWalkthrough();
 
   const handleConnectWallet = async () => {
     if (isConnected) {
@@ -55,7 +62,21 @@ export default function Header() {
                 <li key={link.href}>
                   <Link
                     href={link.href}
+                    id={
+                      link.href === '/create-event'
+                        ? 'create-event-link'
+                        : undefined
+                    }
                     className="relative px-4 py-2 text-sm font-medium text-gray-700 rounded-full transition-all hover:bg-indigo-50 hover:text-indigo-600"
+                    onClick={() => {
+                      if (link.href === '/create-event' && stepIndex === 3) {
+                        setRunTour(false);
+                        setTimeout(() => {
+                          setStepIndex(4);
+                          localStorage.setItem('pending_walkthrough_step', '4');
+                        }, 100);
+                      }
+                    }}
                   >
                     {link.label}
                     {typeof window !== 'undefined' &&
@@ -72,6 +93,7 @@ export default function Header() {
           <div className="navbar-end flex items-center gap-4">
             <div className="relative">
               <button
+                id="connect-wallet-button-header"
                 className={`btn btn-sm rounded-full px-5 transition-all ${
                   isConnected
                     ? 'bg-indigo-50 text-indigo-600 hover:bg-indigo-100'
@@ -101,9 +123,25 @@ export default function Header() {
               </button>
               {isConnected && walletDropdownOpen && (
                 <div className="absolute right-0 mt-2 w-48 bg-white rounded-xl shadow-lg py-2 z-50 animate-fade-in">
-                  <div className="px-4 py-2 text-sm text-gray-600 border-b border-gray-200">
+                  <div
+                    className="px-4 py-2 text-sm text-gray-600 border-b border-gray-200 hover:cursor-pointer"
+                    onClick={() => {
+                      navigator.clipboard.writeText(address || '');
+                    }}
+                  >
                     {truncatedAddress}
                   </div>
+                  <button
+                    className="w-full text-left px-4 py-2 text-sm text-gray-600 hover:bg-gray-100"
+                    onClick={() => {
+                      window.open(
+                        'https://sepolia-web.argent.xyz/settings',
+                        '_blank'
+                      );
+                    }}
+                  >
+                    🔧 Manage wallet
+                  </button>
                   <button
                     className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-gray-100"
                     onClick={handleConnectWallet}
@@ -150,6 +188,11 @@ export default function Header() {
                 <li key={link.href}>
                   <Link
                     href={link.href}
+                    id={
+                      link.href === '/create-event'
+                        ? 'create-event-link-mobile'
+                        : undefined
+                    }
                     className="py-3 text-gray-700 hover:text-indigo-600 font-medium transition-colors"
                     onClick={() => setMobileMenuOpen(false)}
                   >

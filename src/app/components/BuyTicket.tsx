@@ -8,7 +8,7 @@ import { STRK_ADDRESS } from '../types';
 
 interface BuyTicketProps {
   eventId: bigint;
-  onSuccess?: (ticketId: bigint) => void;
+  onSuccess?: () => void;
 }
 
 export default function BuyTicket({ eventId, onSuccess }: BuyTicketProps) {
@@ -55,7 +55,7 @@ export default function BuyTicket({ eventId, onSuccess }: BuyTicketProps) {
       );
       setSuccess(`Ticket purchased successfully! Ticket ID: ${ticketId}`);
       if (onSuccess) {
-        onSuccess(ticketId);
+        onSuccess();
       }
     } catch (err) {
       console.error('Error purchasing ticket:', err);
@@ -80,7 +80,7 @@ export default function BuyTicket({ eventId, onSuccess }: BuyTicketProps) {
   }
 
   return (
-    <div className="card bg-base-100 shadow-md">
+    <div className="card bg-base-100  shadow-md" id="buy-ticket-component">
       <div className="card-body">
         <h2 className="card-title">Buy Tickets</h2>
 

@@ -563,8 +563,8 @@ export class TicketingContract {
       const events: EventInfo[] = [];
       const eventsCount = await this.getEventsCount();
 
-      // Process events in batches to reduce RPC load
-      const BATCH_SIZE = 3; // Process 3 events at a time
+      // Increase batch size to reduce the number of batches
+      const BATCH_SIZE = 10; // Process 10 events at a time
 
       for (
         let batchStart = 1;
@@ -592,9 +592,9 @@ export class TicketingContract {
           }
         });
 
-        // Add a short delay between batches to avoid hitting rate limits
+        // Reduce delay between batches (or remove if your RPC provider can handle it)
         if (batchEnd < Number(eventsCount)) {
-          await new Promise((resolve) => setTimeout(resolve, 500));
+          await new Promise((resolve) => setTimeout(resolve, 100)); // Reduced to 100ms
         }
       }
 
