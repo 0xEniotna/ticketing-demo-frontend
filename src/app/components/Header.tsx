@@ -142,6 +142,22 @@ export default function Header() {
                   >
                     🔧 Manage wallet
                   </button>
+                  <div className="px-4 py-2 border-t border-gray-200">
+                    <h3 className="text-xs font-medium text-gray-500 mb-2">
+                      Recent Transactions
+                    </h3>
+                    <div
+                      className="max-h-40 overflow-y-auto pr-1 hover:cursor-pointer"
+                      onClick={() => {
+                        window.open(
+                          `https://sepolia.voyager.online/contract/${address}#events`,
+                          '_blank'
+                        );
+                      }}
+                    >
+                      View on Voyager.
+                    </div>
+                  </div>
                   <button
                     className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-gray-100"
                     onClick={handleConnectWallet}
