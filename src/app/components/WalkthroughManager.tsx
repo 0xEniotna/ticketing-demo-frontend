@@ -248,6 +248,9 @@ export default function WalkthroughManager() {
         <div className="space-y-3">
           <p>Select the ticket category and buy your ticket here.</p>
           <p>Click "Buy Ticket" to complete the purchase.</p>
+          <p className="font-bold text-red-600">
+            YOU NEED STRK TO BUY TICKETS.
+          </p>
           <p>
             Once again, session keys are used to handle the transaction
             seamlessly.
@@ -369,9 +372,10 @@ export default function WalkthroughManager() {
         return true;
       if (
         currentPath.startsWith('/event/') &&
-        (currentStep === 14 || currentStep === 15)
+        (currentStep === 14 || currentStep === 15 || currentStep === 16)
       )
         return true;
+      if (currentPath === '/my-tickets' && currentStep >= 17) return true;
       return false;
     };
 
